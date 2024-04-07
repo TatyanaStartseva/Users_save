@@ -31,28 +31,32 @@ async def handle_chats_links(request):
 
         chat_users = []
         user_ids_written = set()
-
-        for chat_id in chat_ids:
-            cursor.execute("SELECT * FROM users WHERE chat_id = %s", (chat_id,))
-            users = cursor.fetchall()
-            for user in users:
-                user_id = user[1]
-                if user_id not in user_ids_written:
-                    chat_users.append(
-                        (
-                            user_id,
-                            user[2],
-                            user[3],
-                            user[4],
-                            user[5],
-                            user[6],
-                            user[7],
-                            user[8],
-                            user[9],
-                            user[10],
+        if chat_ids:
+            for chat_id in chat_ids:
+                cursor.execute("SELECT user_id FROM user_chat WHERE chat_id = %s", (chat_id,))
+                users = cursor.fetchall()
+                for user in users:
+                    cursor.execute("SELECT * FROM users WHERE user_id = %s", (user,))
+                    user_data = cursor.fetchall()
+                    user_id = user_data[0][0]
+                    if user_id not in user_ids_written:
+                        chat_users.append(
+                            (
+                                user_data[0][0],
+                                user_data[0][1],
+                                user_data[0][2],
+                                user_data[0][3],
+                                user_data[0][4],
+                                user_data[0][5],  # last_online
+                                user_data[0][6],  # premium
+                                user_data[0][7],  # phone
+                                user_data[0][8],  # image
+                            )
                         )
-                    )
-                    user_ids_written.add(user_id)
+                        user_ids_written.add(user_id)
+        else:
+            return web.Response(status=404)
+
         wb = Workbook()
         ws = wb.active
         ws.append(
@@ -76,26 +80,28 @@ async def handle_chats_links(request):
                 user[3],
                 user[4],
                 user[5].strftime("%Y-%m-%d %H:%M:%S") if user[5] is not None else "",
-                "false" if user[6] is None else "true",
+                "false" if user[6] == False else "true",
                 "" if user[7] is None else user[7],
-                "true" if user[8] is None else "false",
+                "true" if user[8] == True else "false",
             ]
             ws.append(user_data)
+
         file_path = "chats_users.xlsx"
         wb.save(file_path)
         with open(file_path, "rb") as f:
             content = f.read()
 
-        return web.Response(
+        response = web.Response(
             body=content,
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+        os.remove(file_path)
+        return response
     except Exception as e:
         return web.Response(text=f"Error: {e}")
 
 
 app = web.Application()
 app.router.add_get("/chats_links", handle_chats_links)
-
 
 web.run_app(app, port=80)
